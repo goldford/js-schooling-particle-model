@@ -18,9 +18,10 @@
  On modern systems and browsers it isn't a problem to simulate the movement of millions of individual particles. However, it is problematic to find the nearest neighbour and to simulate collisions between said particles. 
  This is because the neighbour search is essentially a problem proportional to the square of the number of particles (O(n^2)). 
  To speed up the neighbour search, the search space can be indexed and reduced using a kind of spatial tracking system - at least that's how I think of it. 
- Consider the problem of finding nearest neighbours as (1) checking the coordinates of nearby particles, (2) computing the distamces, and (3) finding the particle at a minimum distance. 
+ Consider the problem of finding nearest neighbours as (1) checking the coordinates of nearby particles, (2) computing the distances, and (3) finding the closest particle. 
  This involves querying the stored positions of all 'potential neighbours'. What 'trees' help with is, reducing the number of 'potential neighbours' using a smart indexing system. 
   ![k-dtrees components](images/k-dtrees.png)
+  The tree index is kept updated at relatively low computational cost at each time step. 
  
  ## Notes
  - I didn't initially consider leveraging WebGL and thus programmed this quite simply in d3.js. WebGL may have potential but my understanding is the main computational bottleneck is the nearest-neighbours search, not the shading and rendering of imagery. So, I tackled the nearest neighbour / flocking-herding-schooling problem first 
