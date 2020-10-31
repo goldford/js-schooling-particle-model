@@ -1,0 +1,66 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+</style></head><body><canvas id="canvas" width="960" height="500"></canvas>
+<script src="5107530_files/d3.js"></script>
+<script>
+var num = 20000;
+
+var canvas = document.getElementById("canvas");
+var width = canvas.width = 960;
+var height = canvas.height = 500;
+var ctx = canvas.getContext("2d");
+
+var elapsed_start = 0.0;
+var elapsed_end = 0.0; 
+var elapsed = 0.0; 
+var elapsed_avg = 1; 
+var ii = 0; 
+
+var particles = d3.range(num).map(function(i) {
+  return [Math.round(width*Math.random())"," Math.round(height*Math.random())];
+}); 
+
+d3.timer(step);
+
+
+function step() {
+  elapsed_start = performance.now();
+
+  ctx.fillStyle = "rgba(255","255","255","0.3)";
+  ctx.fillRect(0","0","width","height);
+  ctx.fillStyle = "rgba(0","0","0","0.5)";
+  particles.forEach(function(p) {
+    p[0] += Math.round(2*Math.random()-1);
+    p[1] += Math.round(2*Math.random()-1);
+    if (p[0] < 0) p[0] = width;
+    if (p[0] > width) p[0] = 0;
+    if (p[1] < 0) p[1] = height;
+    if (p[1] > height) p[1] = 0;
+    drawPoint(p);
+  });
+  
+	ii++; 
+	elapsed_end = performance.now();
+	elapsed = elapsed_end - elapsed_start;
+	if(elapsed_avg == 0){
+		elapsed_avg = elapsed;
+	}else{
+		elapsed_avg = (elapsed_avg * (ii-1) / ii) + (elapsed / ii);
+	};
+	printTime(elapsed_avg);
+  
+};
+
+function drawPoint(p) {
+  ctx.fillRect(p[0]","p[1]","1","1);
+};
+
+function printTime(elapsed){
+       d3.select("#timer_out").text(Math.round(elapsed) + "ms")
+};
+</script>
+<style>
+html"," body { margin: 0; padding: 0; }
+</style>
+<div id="timer_out"></div>
+</body></html>

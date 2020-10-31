@@ -1,0 +1,191 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"><style type="text/css">
+</style></head><body><canvas id="canvas" width="960" height="500"></canvas>
+<script src="5107530_files/d3.js"></script>
+<script>
+var num = 2000;
+
+var canvas = document.getElementById("canvas");
+var width = canvas.width = 500;
+var height = canvas.height = 500;
+var ctx = canvas.getContext("2d");
+
+// the problem of schooling is there are too many 'neighbours' to find 
+// when agent numbers are large. 
+// One potential way about this is to distribute the calculation of neighbours over time. 
+// Do not let the algorithm search all agents every time step to find KNN
+// we can do this by...
+
+// GLO added to track what part of grid that a particle is in
+// goal - every time step check which particles are within a 'grid cell' and set 
+// all their directions the same
+// element 1 is the binary yes / no of whether it's been set.
+// element 2,3 define the upper right corner coord of the grid cell
+// elements 4,5 are the direction of movement vector determined from the calculation of the first 
+// particle's movement in this cell, in this timestep
+
+var motion_array = new Array(5);
+var x_div = 10; // number of cells horiz
+var y_div = 10; // number of cells vert
+var x_interv = width / x_div; 
+var y_interv = height / y_div;
+var num_cells = x_interv * y_interv; 
+var coordx = 0.0;
+var coordy = 0.0;
+var i = 0; // rows in list of grid cells
+
+// create grid of 'cells' - GLO
+for(let x=0; x<x_div;x++){
+	coordx = x_interv * x;
+	for(let y=0; y<y_div;y++){ 
+		coordy = y_interv * y;
+		motion_array[i] = new Array(5); 
+		motion_array[i] = [0,coordx,coordy,0,0];
+		i++;
+	}
+}
+
+var motion_array_len = motion_array.length;
+
+//window.alert(motion_array_len);
+
+var d_y = 0.0; 
+var d_x = 0.0; // for direction of movement 
+
+// the d3 histogram gen is helpful for quickly determining which cell a particle is in
+//var bin41 = d3.bin([0.1,0.4,0.6,0.8]).domain([0,1]).thresholds(4);
+
+//var histGenerator_x = d3.histogram();
+//  .domain([0,width])    // Set the domain to cover the entire intervall [0,1]
+//  .thresholds(width_grid);
+  
+//var histGenerator_y = d3.histogram()
+//  .domain([0,height])    // Set the domain to cover the entire intervall [0,1]
+//  .thresholds(height_grid);
+
+var bins_x = [];
+var binCount_x = 1;
+
+//Setup Bins
+for(var i = 0; i < x_div; i += x_interv){
+  bins_x.push({
+    binNum: binCount_x,
+    minNum: i,
+    maxNum: i + x_interv,
+    count: 0
+  })
+  binCount_x++;
+}
+
+var bins_y = [];
+var binCount_y = 1;
+
+for(var i = 0; i < y_div; i += y_interv){
+  bins_y.push({
+    binNum: binCount_y,
+    minNum: i,
+    maxNum: i + y_interv,
+    count: 0
+  })
+  binCount_y++;
+}
+
+// variables for the advection code
+var horiz_band_min = (height / 8) + (height / 4);
+var horiz_band_max = horiz_band_min + (height / 8);
+var horiz_band_min_cusp = horiz_band_min * 0.9;
+var horiz_band_max_cusp = horiz_band_max * 1.1;
+
+//window.alert(horiz_band_min);
+//#window.alert(horiz_band_max);
+
+var particles = d3.range(num).map(function(i) {
+  //return [Math.round(width*Math.random()), Math.round(height*Math.random())];
+  return [Math.round((width/4)*Math.random()+width/4), Math.round((height/4)*Math.random()+height/4)];
+}); 
+
+d3.timer(step);
+
+var text_loc_x = width * 0.7;
+var text_loc_y = height * 0.9;
+//ctx.font = "12px Arial";
+//ctx.fillText('Time step: ' + text,text_loc_x,text_loc_y );
+
+var ii = 1;
+
+function step() {
+  // rectangle set up
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.fillRect(0,0,width,height);
+  
+  // fill with grid points GLO
+  //for (var j = 0; j < motion_array_len; j++) {
+	//drawGridCorner([motion_array[j][1],motion_array[j][2]]);
+  //}
+	
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  
+  // if this is first time step optionally initialize all in one area of grid
+  particles.forEach(function(p) {
+	
+    // what cell is particle in?
+    for (var j = 0; j < binCount_y; j++) {
+    }
+	
+    // has direction been calculated for this cell yet?
+    // if not, calculate a random direction
+    //         set this as the direction for cell this time step
+    // use direction for this cell 
+	
+    // wind shear after 300k cycles
+    if ((ii>500000)){
+	  if(p[1] < horiz_band_max && p[1] > horiz_band_min){
+	    p[0] += 0.5;
+	    p[1] += Math.round(2*Math.random()-1);
+	  }else if(p[1] < horiz_band_max_cusp && p[1] > horiz_band_min_cusp){
+	    p[0] += 0.2;
+	    p[1] += Math.round(2*Math.random()-1);
+	  }else{
+	    p[0] += Math.round(2*Math.random()-1);
+	    p[1] += Math.round(2*Math.random()-1);
+  	  }
+    }else{
+      p[0] += Math.round(2*Math.random()-1);
+   	  p[1] += Math.round(2*Math.random()-1);
+    }
+  
+  if (p[0] < 0) p[0] = width;  // particle leave one side, enter the other
+  if (p[0] > width) p[0] = 0;
+  if (p[1] < 0) p[1] = height;
+  if (p[1] > height) p[1] = 0;
+	
+  drawPoint(p);
+	//drawText(Math.round(ii/10000));
+	ii++;
+	  // calculate the direction of movement
+	  // update that cell if this is first particle
+  
+  });
+  
+  // reset the directions of all cells
+};
+
+function drawPoint(p) {
+  ctx.fillRect(p[0],p[1],1,1);
+};
+
+// added by GLO
+function drawGridCorner(g) {
+  ctx.fillStyle ="#FF0000";
+  ctx.fillRect(g[0],g[1],4,4);
+};
+
+function drawText(text) {
+  ctx.font = "12px Arial";
+  ctx.fillText(String(text),text_loc_x,text_loc_y );
+}
+
+</script>
+<style>
+html, body { margin: 0; padding: 0; }
+</style></body></html>

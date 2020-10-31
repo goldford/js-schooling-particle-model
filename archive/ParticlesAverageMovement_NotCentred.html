@@ -1,0 +1,262 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"><style type="text/css">
+</style></head><body><canvas id="canvas" width="960" height="500"></canvas>
+<script src="5107530_files/d3.js"></script>
+<script src="5107530_files/d3-hexbin.v0.2.min.js"></script>
+<script>
+var num = 2000;
+
+var canvas = document.getElementById("canvas");
+var width = canvas.width = 500;
+var height = canvas.height = 500;
+var ctx = canvas.getContext("2d");
+
+// the problem of schooling is there are too many 'neighbours' to find 
+// when agent numbers are large. 
+// One potential way about this is to distribute the calculation of neighbours over time. 
+// Do not let the algorithm search all agents every time step to find KNN
+// we can do this by...
+
+// GLO added to track what part of grid that a particle is in
+// goal - every time step check which particles are within a 'grid cell' and set 
+// all their directions the same
+// element 1 is the binary yes / no of whether it's been set.
+// element 2,3 define the upper right corner coord of the grid cell
+// elements 4,5 are the direction of movement vector determined from the calculation of the first 
+// particle's movement in this cell, in this timestep
+
+var motion_array = new Array(5);
+var x_div = 10; // number of cells horiz
+var y_div = 10; // number of cells vert
+var x_interv = width / x_div; 
+var y_interv = height / y_div;
+var num_cells = x_interv * y_interv; 
+var coordx = 0.0;
+var coordy = 0.0;
+//var i = 0; // rows in list of grid cells
+
+var hexbin = d3.hexbin();
+
+// create grid of 'cells' - GLO
+for(let x=0; x<x_div;x++){
+	coordx = x_interv * x;
+	for(let y=0; y<y_div;y++){ 
+		coordy = y_interv * y;
+		motion_array[y] = new Array(5); 
+		motion_array[y] = [0,coordx,coordy,0,0];
+		y++;
+	}
+}
+
+var motion_array_len = motion_array.length;
+
+//window.alert(motion_array_len);
+
+var d_y = 0.0; 
+var d_x = 0.0; // for direction of movement 
+
+// the d3 histogram gen is helpful for quickly determining which cell a particle is in
+//var bin41 = d3.bin([0.1,0.4,0.6,0.8]).domain([0,1]).thresholds(4);
+
+//var histGenerator_x = d3.histogram();
+//  .domain([0,width])    // Set the domain to cover the entire intervall [0,1]
+//  .thresholds(width_grid);
+  
+//var histGenerator_y = d3.histogram()
+//  .domain([0,height])    // Set the domain to cover the entire intervall [0,1]
+//  .thresholds(height_grid);
+
+var bins_x = [];
+//var binCount_x = 1;
+
+//Setup Bins
+for(var i = 0; i < x_div; i++){
+  bins_x.push([i, i * x_interv, (i + 1) * x_interv, 0, 0])
+  //binCount_x++;
+}
+
+var bins_y = [];
+//var binCount_y = 0;
+for(var i = 0; i < y_div; i++){
+  bins_y.push([i, i * y_interv, (i + 1) * y_interv, 0, 0]);
+  //binCount_y++;
+}
+
+//for (var j = 0; j < bins_y.length; j++) {
+//  window.alert(bins_y[j][3]); 
+//    }
+
+
+var cellx = 0; 
+var celly = 0;
+
+
+// variables for the advection code
+var horiz_band_min = (height / 8) + (height / 4);
+var horiz_band_max = horiz_band_min + (height / 8);
+var horiz_band_min_cusp = horiz_band_min * 0.9;
+var horiz_band_max_cusp = horiz_band_max * 1.1;
+
+//window.alert(d3.range(num));
+//#window.alert(horiz_band_max);
+
+// initialize particles
+var particles = d3.range(num).map(function(i) {
+  //return [Math.round(width*Math.random()), Math.round(height*Math.random())];
+  return [
+  Math.round((width/4)*Math.random()+width/4), 
+  Math.round((height/4)*Math.random()+height/4),
+  Math.round(2*Math.random()-1),
+  Math.round(2*Math.random()-1)
+  ];
+}); 
+
+d3.timer(step);
+
+var text_loc_x = width * 0.7;
+var text_loc_y = height * 0.9;
+//ctx.font = "12px Arial";
+//ctx.fillText('Time step: ' + text,text_loc_x,text_loc_y );
+
+var ii = 1;
+var next_x = 0.0;
+var next_y = 0.0;
+var binmin_x = 0.0;
+var binmax_x = 0.0;
+var binmin_y = 0.0;
+var binmax_y = 0.0;
+var dir_x = 0.0;
+var dir_y = 0.0;
+
+var particle_cells = 0.0;
+
+function step() {
+  // rectangle set up
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.fillRect(0,0,width,height);
+  
+  // fill with grid points GLO
+  //for (var j = 0; j < motion_array_len; j++) {
+	//drawGridCorner([motion_array[j][1],motion_array[j][2]]);
+  //}
+	
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  
+  // if this is first time step optionally initialize all in one area of grid
+  particles.forEach(function(p) {
+	
+	
+    // what cell is particle in?
+    for (var j = 0; j < x_div; j++) {
+	  binmin_x = bins_x[j][1];
+	  binmax_x = bins_x[j][2];
+	  if (p[0] > binmin_x && p[0] < binmax_x) {
+	    cellx = j; 
+		// direction for this cell set? 
+		if (bins_x[j][4]==0){
+		  dir_x = p[2];
+          bins_x.splice(cellx,1);
+          bins_x.push([cellx,binmin_x,binmax_x,dir_x,1]);
+		  break;
+		}else{
+		  dir_x = Math.round((bins_x[cellx][3]+p[2])/2);
+          bins_x.splice(cellx,1);
+          bins_x.push([cellx,binmin_x,binmax_x,dir_x,1]);
+		  break;
+		}
+	  }
+    }
+	
+	for (var j = 0; j < y_div; j++) {
+	  binmin_y = bins_y[j][1];
+	  binmax_y = bins_y[j][2];
+	  if (p[1] > binmin_y && p[1] < binmax_y){
+	    celly = j; 
+		// initialize the direction of cell if needed
+		if (bins_y[j][4]==0){
+		  dir_y = p[3];
+		  bins_y.splice(celly,1);
+		  bins_y.push([celly,binmin_y,binmax_y,dir_y,1]);
+		  break;
+		}else{
+		  //bins_y[j][3] = Math.round((bins_y[j][3] + p[1])/2); // take avg
+		  dir_y = Math.round((bins_y[celly][3]+p[3])/2);
+		  bins_y.splice(celly,1);
+		  bins_y.push([celly,binmin_y,binmax_y,dir_y,1]);
+		  break;
+		}
+	  }
+    }
+	
+	
+    // has direction been calculated for this cell yet?
+    // if not, calculate a random direction
+    //         set this as the direction for cell this time step
+    // use direction for this cell 
+	
+    // wind shear after 300k cycles
+    /*if ((ii>500000)){
+	  if(p[1] < horiz_band_max && p[1] > horiz_band_min){
+	    p[0] += 0.5;
+	    p[1] += bins_y[celly][3];
+	  }else if(p[1] < horiz_band_max_cusp && p[1] > horiz_band_min_cusp){
+	    p[0] += 0.2;
+	    p[1] += bins_y[celly][3];
+	  }else{
+	    p[0] += bins_x[cellx][3];
+	    p[1] += bins_y[celly][3];
+  	  }
+    }else{
+      p[0] += bins_x[cellx][3];
+   	  p[1] += bins_y[celly][3];
+    }
+	*/
+  
+    //p[0] += Math.round(2*Math.random()-1);
+	//p[0] += bins_x[cellx][3];
+	//p[1] += bins_y[celly][3];
+	p[0] += ((dir_x + 2*Math.random()-1)/2); 
+	p[1] += ((dir_y + 2*Math.random()-1)/2); 
+	p[2] = ((dir_x + 2*Math.random()-1)/2);
+	p[3] = ((dir_y + 2*Math.random()-1)/2);
+    if (p[0] < 0) p[0] = width;  // particle leave one side, enter the other
+    if (p[0] > width) p[0] = 0;
+    if (p[1] < 0) p[1] = height;
+    if (p[1] > height) p[1] = 0;
+	
+    drawPoint(p);
+	//drawText(Math.round(ii/10000));
+	ii++;
+  
+  });
+  
+  // reset the directions of all cells
+  /*for (var j = 0; j < x_div; j++) {
+    bins_x[j][3]=0;
+  }
+  for (var j = 0; j < y_div; j++) {
+    bins_y[j][3]=0;
+  }
+  */
+  
+};
+
+function drawPoint(p) {
+  ctx.fillRect(p[0],p[1],1,1);
+};
+
+// added by GLO
+function drawGridCorner(g) {
+  ctx.fillStyle ="#FF0000";
+  ctx.fillRect(g[0],g[1],4,4);
+};
+
+function drawText(text) {
+  ctx.font = "12px Arial";
+  ctx.fillText(String(text),text_loc_x,text_loc_y );
+}
+
+</script>
+<style>
+html, body { margin: 0; padding: 0; }
+</style></body></html>
