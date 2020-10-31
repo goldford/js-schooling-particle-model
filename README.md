@@ -4,7 +4,8 @@
  The main motivation is to explore the effect of schooling / shoaling in fish and the effect that has on fishing catch per unit effort over time and consumption by predators over time. 
  I hope eventually to explore the effect of reduced size of individual fish on time spent foraging by predators. 
  
- Today's browsers and javascript web libraries are powerful but currently under-utilized (in the sciences) out-of-the-box user interfaces. I'm also motivated to explore how to tap that potential. 
+ Today's browsers and javascript web libraries are powerful but currently under-utilized (in the sciences) out-of-the-box user interfaces. I'm motivated to explore how to tap that potential. 
+ I found it really appealing that the simulation here can be run offline, but still use the browser. All that's required to do that is to pre-download the javascript libraries referenced in the main html file. 
  
  The model is inspired by the influential study by [Reynolds (1987)](https://www.red3d.com/cwr/papers/1987/boids.html). 
  Reynolds broke apart this behaviour into three components: separation, alignment, and cohesion. 
