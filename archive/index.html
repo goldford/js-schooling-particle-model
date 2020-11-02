@@ -9,6 +9,8 @@
 <script src="scripts/rbush-knn.min.js"></script>
 <script src="scripts/kdbush.min.js"></script>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.2/dat.gui.min.js"></script>
+
 <script>
 // https://d3js.org/d3.v5.min.js
 // https://cdn.jsdelivr.net/npm/rbush-knn@3.0.1/rbush-knn.min.js
@@ -16,9 +18,6 @@
 // https://unpkg.com/rbush@2.0.1/rbush.js
 // https://unpkg.com/rbush@2.0.1/rbush.min.js
 // https://unpkg.com/kdbush@3.0.0/kdbush.min.js
-
-var canvas = document.getElementById("canvas");
-var ctx = canvas.getContext("2d");
 
 // there are too many 'neighbours' to find when agent numbers are large.
 // Do not let the algorithm search all agents every time step to find KNN
@@ -34,74 +33,136 @@ var ctx = canvas.getContext("2d");
 // set up input
 // register callback handler on input which sets global variable
 
+// set up GUI
+const gui = new dat.GUI();
+const meta = {
+	'Fish Schooling Sim': function () {
+        window.location = 'https://github.com/goldford/js-schooling-particle-model';
+    },
+    'retina resolution': true,
+	'num': 2000, 
+	'separation': false,
+	'cohesion': false, 
+	'alignment': false
+};
+
+gui.add(meta, 'Fish Schooling Sim');
+
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
 var num = 2000; // num particles
 var width = canvas.width = 1110;
 var height = canvas.height = 430;
+var stopd3timer = false; 
 
-var model_ver = "complex"; // simple (just random) or complex (below variables apply)
-
-var movementspeed = 1.4; // speed of movement per time step
-var randomize_speed_f = 0.7; // randomize + / - deviation from speed factor (1 = 50% st dv)
-
-var delay_timer = 0; //milliseconds to delay running loop
-var timer_avg = 1; // yes / no use average ms in on screen print of loop time
-
-var neighbourhood = 50; // max distance from particle that nieghbours can be detected
-var kdBush_treesize = num * 0.07; // clump size in particles for kd tree building
-
+// GLOBALS
 // COHESION HAS AN ISSUE SENDING PARTICLES TO LEFT 
 var cohesion_on = 0; // switches to help debugging
 var alignment_on = 0; 
 // SEPARATION HAS ISSUE  - SENDING PARTICLES RIGHT
 var separation_on = 0; 
 
+function getparticles(num,width,height){
+  return d3.range(num).map(function(i) {
+    return [
+      Math.round((width)*Math.random()),
+      Math.round((height)*Math.random()),
+      0.0,
+      0.0,
+      0.0
+    ];
+  });
+};
+
+// Listen to changes within the GUI
+gui.add(meta, 'num', 512, 10000).onChange(function(newValue) {
+	console.log("Particle number changed to:  ", parseInt(newValue));
+	num = parseInt(newValue)
+	stopd3timer = true; 
+	runmodel();
+});
+gui.add(meta, 'separation').onChange(function(newValue) {
+  
+  if (newValue == true){
+    separation_on = 1; 
+	console.log("separation changed to:  ", separation_on);
+  }else{
+    separation_on = 0;
+	console.log("separation changed to:  ", separation_on);
+  }; 
+  
+});
+
+// initialize particles
+var particles = getparticles(num,width,height);
+var model_ver = "complex"; // simple (just random movement) or complex (below variables apply)
+var movementspeed = 1.4; // speed of movement per time step
+var randomize_speed_f = 0.7; // randomize + / - deviation from speed factor (1 = 50% st dv)
+var delay_timer = 0; //milliseconds to delay running loop
+var timer_avg = 1; // yes / no use average ms in on screen print of loop time
+var neighbourhood = 50; // max distance from particle that nieghbours can be detected
+var kdBush_treesize = num * 0.07; // clump size in particles for kd tree building
+
+
 var cohesion_weight = 1; // weights not yet set up
 var alignment_weight = 1;
 var separation_weight = 1; 
-
 var limitvision180 = 1; // limit field of vision yes / no
 var too_close = 4; // min pixels distance that is acceptable
-
 var rotationSpeed = 10; //in degrees per frame
+
 var check = rotationSpeed * Math.PI / 180; 
 var rot_matrix_x = Math.round(Math.cos(rotationSpeed * Math.PI / 180) * 1000) / 1000;
 var rot_matrix_y = Math.round(Math.sin(rotationSpeed * Math.PI / 180) * 1000) / 1000;;
-
 var d_y = 0.0; 
 var d_x = 0.0; // for direction of movement 
 var dir_x = 0.0; // angle of travel
 var dir_y = 0.0;
-
 var ii = 0; // frame counter
 var pp = 0; // particle counter
-
-// initialize particles
-var particles = d3.range(num).map(function(i) {
-  
-  //Math.round((width/4)*Math.random()+width/4), 
-  //Math.round((height/4)*Math.random()+height/4),
-  return [
-  Math.round((width)*Math.random()),
-  Math.round((height)*Math.random()),
-  0.0,
-  0.0,
-  0.0
-  ];
-}); 
-
 var elapsed_start = 0.0;
 var elapsed_end = 0.0;
 var elapsed = 0.0;
 var elapsed_avg = 0.0;
 
-// starts running the main loop
-//d3.interval(step,delay_timer);
-if (model_ver=="simple"){
-  d3.timer(stepSimple); 
-}else if(model_ver=="complex"){
-  d3.timer(stepModel);
+function resetmodel(){
+  //canvas = document.getElementById("canvas");
+  //ctx = canvas.getContext("2d");
+  //ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  check = rotationSpeed * Math.PI / 180; 
+  rot_matrix_x = Math.round(Math.cos(rotationSpeed * Math.PI / 180) * 1000) / 1000;
+  rot_matrix_y = Math.round(Math.sin(rotationSpeed * Math.PI / 180) * 1000) / 1000;;
+  d_y = 0.0; 
+  d_x = 0.0; // for direction of movement 
+  dir_x = 0.0; // angle of travel
+  dir_y = 0.0;
+  ii = 0; // frame counter
+  pp = 0; // particle counter
+  elapsed_start = 0.0;
+  elapsed_end = 0.0;
+  elapsed = 0.0;
+  elapsed_avg = 0.0;
 };
 
+// starts running the main loop
+//d3.interval(step,delay_timer);
+function runmodel(){
+  resetmodel();
+  if (stopd3timer == true){
+    timer.stop();
+	particles = getparticles(num,width,height);
+	stopd3timer = false;
+  };
+  if (model_ver=="simple"){
+	timer = d3.timer(stepSimple); 
+  }else if(model_ver=="complex"){
+	timer = d3.timer(stepModel);
+  };
+
+};
+
+runmodel(); 
 
 function stepModel() {
 
@@ -202,10 +263,8 @@ function stepModel() {
 						
 							n_closest = n;
 							dmin = d; 
-							
 							pos_x_sum += particles[n][0];
 							pos_y_sum += particles[n][1];
-							
 							align_x_sum += particles[n][2];
 							align_y_sum += particles[n][3];
 							
@@ -223,7 +282,6 @@ function stepModel() {
 		  };
 		  
 		  let current_angle_particle = Math.atan2(p[3],p[2]);
-
 		   
 		  // get SEPARATION component to next movement direction
 		  if(too_close_cnt > 0 && separation_on == 1){
@@ -274,34 +332,34 @@ function stepModel() {
 		  let new_dir_y = 0.0; 
 		  
 		  if(too_close_comp == 0 && align_comp == 1 && cohesion_comp == 0){
-	    new_angle = Math.atan2(align_angle_vects[1],align_angle_vects[0]);
-	  }else if(too_close_comp == 1 && align_comp == 0 && cohesion_comp == 0){
-	    new_angle = Math.atan2(spacing_angle_vects[1],spacing_angle_vects[0]);
-	  }else if(too_close_comp == 0 && align_comp == 0 && cohesion_comp == 1){
-	    new_angle = Math.atan2(cohes_vect_angle[1],cohes_vect_angle[0]);
-	  }else if(too_close_comp == 1 && align_comp == 1 && cohesion_comp == 0){
-	    new_dir_x = (align_angle_vects[0] + spacing_angle_vects[0]) / 2;
-		new_dir_y = (align_angle_vects[1] + spacing_angle_vects[1]) / 2; 
-	    new_angle = Math.atan2(new_dir_y,new_dir_x);
-	  }else if(too_close_comp == 0 && align_comp == 1 && cohesion_comp == 1){
-	    new_dir_x = (align_angle_vects[0] + (cohes_vect_angle[0]*cohesion_weight)) / 2;
-		new_dir_y = (align_angle_vects[1] + (cohes_vect_angle[1]*cohesion_weight)) / 2; 
-	    new_angle = Math.atan2(new_dir_y,new_dir_x);
-	  }else if(too_close_comp == 1 && align_comp == 0 && cohesion_comp == 1){
-	    new_dir_x = ((cohes_vect_angle[0]*cohesion_weight) + spacing_angle_vects[0]) / 2;
-		new_dir_y = ((cohes_vect_angle[1]*cohesion_weight) + spacing_angle_vects[1]) / 2; 
-	    new_angle = Math.atan2(new_dir_y,new_dir_x);
-	  }else if(too_close_comp == 1 && align_comp == 1 && cohesion_comp == 1){
-	    new_dir_x = (cohes_vect_angle[0] + spacing_angle_vects[0] + align_angle_vects[0]) / 3;
-		new_dir_y = (cohes_vect_angle[1] + spacing_angle_vects[1] + align_angle_vects[1]) / 3; 
-	    new_angle = Math.atan2(new_dir_y,new_dir_x);
-	  }else{
-	    new_angle = p[4]; // no change
-	  };
+	        new_angle = Math.atan2(align_angle_vects[1],align_angle_vects[0]);
+	      }else if(too_close_comp == 1 && align_comp == 0 && cohesion_comp == 0){
+			new_angle = Math.atan2(spacing_angle_vects[1],spacing_angle_vects[0]);
+		  }else if(too_close_comp == 0 && align_comp == 0 && cohesion_comp == 1){
+			new_angle = Math.atan2(cohes_vect_angle[1],cohes_vect_angle[0]);
+		  }else if(too_close_comp == 1 && align_comp == 1 && cohesion_comp == 0){
+			new_dir_x = (align_angle_vects[0] + spacing_angle_vects[0]) / 2;
+			new_dir_y = (align_angle_vects[1] + spacing_angle_vects[1]) / 2; 
+			new_angle = Math.atan2(new_dir_y,new_dir_x);
+		  }else if(too_close_comp == 0 && align_comp == 1 && cohesion_comp == 1){
+			new_dir_x = (align_angle_vects[0] + (cohes_vect_angle[0]*cohesion_weight)) / 2;
+			new_dir_y = (align_angle_vects[1] + (cohes_vect_angle[1]*cohesion_weight)) / 2; 
+			new_angle = Math.atan2(new_dir_y,new_dir_x);
+		  }else if(too_close_comp == 1 && align_comp == 0 && cohesion_comp == 1){
+			new_dir_x = ((cohes_vect_angle[0]*cohesion_weight) + spacing_angle_vects[0]) / 2;
+			new_dir_y = ((cohes_vect_angle[1]*cohesion_weight) + spacing_angle_vects[1]) / 2; 
+			new_angle = Math.atan2(new_dir_y,new_dir_x);
+		  }else if(too_close_comp == 1 && align_comp == 1 && cohesion_comp == 1){
+			new_dir_x = (cohes_vect_angle[0] + spacing_angle_vects[0] + align_angle_vects[0]) / 3;
+			new_dir_y = (cohes_vect_angle[1] + spacing_angle_vects[1] + align_angle_vects[1]) / 3; 
+			new_angle = Math.atan2(new_dir_y,new_dir_x);
+		  }else{
+			new_angle = p[4]; // no change
+		  };
 	  
-	  }else{
-	    new_angle = p[4]; // no change
-	  };
+		}else{
+		  new_angle = p[4]; // no change
+		};
 	}else{
 	  //return [Math.round(width*Math.random()), Math.round(height*Math.random())];
 	  let rand_x = 2*Math.random()-1;
@@ -309,8 +367,7 @@ function stepModel() {
 	  let rand_angle = Math.atan2(rand_y,rand_x);
 	  new_angle = rand_angle;
 	};
-	
-		 
+	 
 	let step_x = Math.cos(new_angle) * (movementspeed + (randomize_speed_f * (Math.random()+0.5))); // speed is in pixels to allow diagonal movement (1.4 usually)
     let step_y = Math.sin(new_angle) * (movementspeed + (randomize_speed_f * (Math.random()+0.5)));	
 
@@ -363,8 +420,6 @@ function stepSimple() {
   ctx.fillStyle = "rgba(255,255,255,0.5)";
   // *************** END TESTING SECTION *****************
   
-  
-  
   particles.forEach(function(p) {
     p[0] += Math.round(2*Math.random()-1);
     p[1] += Math.round(2*Math.random()-1);
@@ -391,7 +446,6 @@ function stepSimple() {
 
 //var cohesionCheckbox = document.querySelector("#id");
 // $('#id').value(cohesion_on).change(callback)
-
 //cohesionCheckbox.registerEventHandler('change', toggleCohesion)
 
 function toggleCohesion(event) {
@@ -401,7 +455,7 @@ function toggleCohesion(event) {
 	return;
   }
   cohesion_on = 0;
-}
+};
 
 function toggleAlignment(event) {
   //console.log(event.target.value)
@@ -410,31 +464,30 @@ function toggleAlignment(event) {
 	return;
   }
   alignment_on = 0;
-}
+};
 
-function toggleSeparation(event) {
-  //console.log(event.target.value)
-  if (separation_on === 0) {
-    separation_on = 1;
-	return;
-  }
-  separation_on = 0;
-}
+//function toggleSeparation(event) {
+//  //console.log(event.target.value)
+//  if (separation_on === 0) {
+//    separation_on = 1;
+//	return;
+//  }
+//  separation_on = 0;
+//};
 
 // to do: convert value to double so no errors
 function setMovementSpeed(event) {
   console.log(event.target.value)
   movementspeed = event.target.value;
   return;
-  
-}
+};
+
 function setRandomizeSpeed(event) {
   console.log(event.target.value)
   randomize_speed_f = event.target.value;
   return;
   
-}
-
+};
 
 // weights not yet set up
 function setCohesionw(event) {
@@ -444,9 +497,7 @@ function setCohesionw(event) {
 	return;
   }
   //cohesion_weight = 0;
-}
-
-
+};
 
 function drawPoint(p) {
   ctx.fillRect(p[0],p[1],1,1);
@@ -476,7 +527,6 @@ function distance(a, b) {
     const dy = a[1] - b[1];
     return Math.sqrt(dx * dx + dy * dy);
 };
-
 
 function transitionAngle2(pos_x, pos_y, dir_x, dir_y, target_x, target_y) {
 	// https://stackoverflow.com/questions/14807287/how-can-i-determine-whether-its-faster-to-face-an-object-rotating-clockwise-or?fbclid=IwAR0UiCkovmwBM4C6ii-zGKuvSj0Vd9W_t4Oj0_6MnFZPbOfRHy62dxnOhk4
@@ -558,7 +608,6 @@ function alignAngle(dir_x, dir_y, target_dir_x, target_dir_y) {
 	  new_dir_x = (rot_matrix_x * dir_x) - (rot_matrix_y * dir_y); 
 	  new_dir_y = (rot_matrix_y * dir_x) + (rot_matrix_x * dir_y); 
 	  
-	  
     } else {
       // Target lies anticlockwise
 	  
@@ -570,8 +619,7 @@ function alignAngle(dir_x, dir_y, target_dir_x, target_dir_y) {
 	  new_dir_x = (rot_matrix_x * dir_x) + (rot_matrix_y * dir_y); 
 	  new_dir_y = (-rot_matrix_y * dir_x) + (rot_matrix_x * dir_y); 
 	  
-	  
-    }
+    };
 	
 	return([new_dir_x, new_dir_y]); 
 	//
@@ -584,11 +632,9 @@ function cohesionAngle(pos_x, pos_y, dir_x, dir_y, target_x, target_y) {
 	let new_dir_x = 0.0; 
 	let new_dir_y = 0.0; 
 	
-	
 	//var pos_x, pos_y, dir_x, dir_y, target_x, target_y;
     if ((pos_x - target_x) * dir_y > (pos_y - target_y) * dir_x) {
       
-	  
 	  // Target lies clockwise
 	  // following "12.2 linear transformations faculty" pdf from google
 	  // a 45 degree rotation can be accomplished by multiplying the point, in this 
@@ -622,7 +668,7 @@ function cohesionAngle(pos_x, pos_y, dir_x, dir_y, target_x, target_y) {
 	  // 15 deg
 	  new_dir_x = (rot_matrix_x * dir_x) + (rot_matrix_y * dir_y); 
 	  new_dir_y = (-rot_matrix_y * dir_x) + (rot_matrix_x* dir_y); 
-    }
+    };
 	
 	return([new_dir_x, new_dir_y]); 
 	//
@@ -635,11 +681,9 @@ function lineofSight(pos_x, pos_y, dir_x, dir_y, target_x, target_y){
 	// rotate input direction vector by 90 clockwise (to right)
 	let rot90_dir_x = dir_y; 
 	let rot90_dir_y = dir_x * (-1); 
-	
 	let check1 = (pos_x - target_x) * rot90_dir_y;
 	let check2 = (pos_y - target_y) * rot90_dir_x;
 		
-	 
 	//var pos_x, pos_y, dir_x, dir_y, target_x, target_y;
     if (check2 > check1) {
     // Target lies anticlockwise so it is visible (not further clockwise)
@@ -661,8 +705,8 @@ cohesion <input id ="cohesion" type="checkbox" onchange="toggleCohesion(event)"/
 <!--cohesion weight <input id ="cohesion_w" type="range" onchange="setCohesionw(event)" max="1" min="0" step="0.1"/><br>
 <br>-->
 alignment <input id ="alignment" type="checkbox" onchange="toggleAlignment(event)"/><br>
-separation <input id ="separation" type="checkbox" onchange="toggleSeparation(event)"/>
-<br>
+<!--separation <input id ="separation" type="checkbox" onchange="toggleSeparation(event)"/>
+<br>-->
 <!-- to work must convert range value to integer
 movement speed factor <input id ="movementspeed" type="range" onchange="setMovementSpeed(event)" max="2" min="0.1" step="0.1" value="1.4"/><br>
 randomize speed factor <input id ="randomizespeed" type="range" onchange="setRandomizeSpeed(event)" max="2" min="0.1" step="0.1"/><br>
