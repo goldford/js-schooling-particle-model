@@ -19,11 +19,10 @@
 // https://unpkg.com/rbush@2.0.1/rbush.min.js
 // https://unpkg.com/kdbush@3.0.0/kdbush.min.js
 
-// there are too many 'neighbours' to find when agent numbers are large.
-// Do not let the algorithm search all agents every time step to find KNN
-// to edo this am trying https://github.com/mourner/kdbush
 // *****************************************************************************
+// https://github.com/mourner/kdbush
 // KD-trees seem appropriate instead of R-Trees or Quad Trees since it's points
+// there are too many 'neighbours' to find when agent numbers are large.
 // https://blog.mapbox.com/a-dive-into-spatial-search-algorithms-ebd0c5e39d2a
 // 
 // TO DO: 
@@ -81,8 +80,18 @@ gui.add(meta, 'num', 512, 10000).onChange(function(newValue) {
 	stopd3timer = true; 
 	runmodel();
 });
+
+gui.add(meta, 'cohesion').onChange(function(newValue) {
+  if (newValue == true){
+    cohesion_on = 1; 
+	console.log("cohesion changed to:  ", cohesion_on);
+  }else{
+    cohesion_on = 0;
+	console.log("cohesion changed to:  ", cohesion_on);
+  }; 
+});
+
 gui.add(meta, 'separation').onChange(function(newValue) {
-  
   if (newValue == true){
     separation_on = 1; 
 	console.log("separation changed to:  ", separation_on);
@@ -90,7 +99,16 @@ gui.add(meta, 'separation').onChange(function(newValue) {
     separation_on = 0;
 	console.log("separation changed to:  ", separation_on);
   }; 
-  
+});
+
+gui.add(meta, 'alignment').onChange(function(newValue) {
+  if (newValue == true){
+    alignment_on = 1; 
+	console.log("alignment changed to:  ", alignment_on);
+  }else{
+    alignment_on = 0;
+	console.log("alignment changed to:  ", alignment_on);
+  }; 
 });
 
 // initialize particles
@@ -102,7 +120,6 @@ var delay_timer = 0; //milliseconds to delay running loop
 var timer_avg = 1; // yes / no use average ms in on screen print of loop time
 var neighbourhood = 50; // max distance from particle that nieghbours can be detected
 var kdBush_treesize = num * 0.07; // clump size in particles for kd tree building
-
 
 var cohesion_weight = 1; // weights not yet set up
 var alignment_weight = 1;
@@ -169,7 +186,7 @@ function stepModel() {
   elapsed_start = performance.now();
   
   // new KDBush(points[, getX, getY, nodeSize, arrayType])
-  // NODE SIZE IS V IMPORTANT FOR SPEED
+  // nodeSize important for speed
   // getx, gety are optional if points are already [x,y] format
   if(ii>0){
     var KD_tree = new KDBush(particles, undefined, undefined, kdBush_treesize, Int32Array);
@@ -486,7 +503,6 @@ function setRandomizeSpeed(event) {
   console.log(event.target.value)
   randomize_speed_f = event.target.value;
   return;
-  
 };
 
 // weights not yet set up
@@ -531,15 +547,12 @@ function distance(a, b) {
 function transitionAngle2(pos_x, pos_y, dir_x, dir_y, target_x, target_y) {
 	// https://stackoverflow.com/questions/14807287/how-can-i-determine-whether-its-faster-to-face-an-object-rotating-clockwise-or?fbclid=IwAR0UiCkovmwBM4C6ii-zGKuvSj0Vd9W_t4Oj0_6MnFZPbOfRHy62dxnOhk4
 	
-	// rotate by 45 degrees, even if it means over-steering.
 	let new_dir_x = 0.0; 
 	let new_dir_y = 0.0; 
-	
 	
 	//var pos_x, pos_y, dir_x, dir_y, target_x, target_y;
     if ((pos_x - target_x) * dir_y > (pos_y - target_y) * dir_x) {
       
-	  
 	  // Target lies clockwise
 	  // following "12.2 linear transformations faculty" pdf from google
 	  // a 45 degree rotation can be accomplished by multiplying the point, in this 
@@ -588,7 +601,7 @@ function transitionAngle2(pos_x, pos_y, dir_x, dir_y, target_x, target_y) {
 };
 
 function alignAngle(dir_x, dir_y, target_dir_x, target_dir_y) {
-	// rotate by 45 degrees, even if it means over-steering.
+
 	let new_dir_x = 0.0; 
 	let new_dir_y = 0.0; 
 	
@@ -628,7 +641,6 @@ function alignAngle(dir_x, dir_y, target_dir_x, target_dir_y) {
 function cohesionAngle(pos_x, pos_y, dir_x, dir_y, target_x, target_y) {
 	// https://stackoverflow.com/questions/14807287/how-can-i-determine-whether-its-faster-to-face-an-object-rotating-clockwise-or?fbclid=IwAR0UiCkovmwBM4C6ii-zGKuvSj0Vd9W_t4Oj0_6MnFZPbOfRHy62dxnOhk4
 	
-	// rotate by 45 degrees, even if it means over-steering.
 	let new_dir_x = 0.0; 
 	let new_dir_y = 0.0; 
 	
@@ -701,10 +713,10 @@ html, body { margin: 0; padding: 0; }
 <div id="timer_out"></div>
 <div id="debug_console"></div>
 <div id="input_stuff">
-cohesion <input id ="cohesion" type="checkbox" onchange="toggleCohesion(event)"/><br>
+<!--cohesion <input id ="cohesion" type="checkbox" onchange="toggleCohesion(event)"/><br>-->
 <!--cohesion weight <input id ="cohesion_w" type="range" onchange="setCohesionw(event)" max="1" min="0" step="0.1"/><br>
 <br>-->
-alignment <input id ="alignment" type="checkbox" onchange="toggleAlignment(event)"/><br>
+<!--alignment <input id ="alignment" type="checkbox" onchange="toggleAlignment(event)"/><br>-->
 <!--separation <input id ="separation" type="checkbox" onchange="toggleSeparation(event)"/>
 <br>-->
 <!-- to work must convert range value to integer
