@@ -1,0 +1,595 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"><style type="text/css">
+</style></head><body><canvas id="canvas" width="960" height="500"></canvas>
+<script src="scripts/d3.js"></script>
+<script src="scripts/rbush.js"></script>
+<script src="scripts/rbush.min.js"></script>
+<script src="scripts/rbush-knn.js"></script>
+<script src="scripts/rbush-knn.min.js"></script>
+
+<script src="scripts/kdbush.min.js"></script>
+
+<script>
+// https://cdn.jsdelivr.net/npm/rbush-knn@3.0.1/rbush-knn.min.js
+// https://cdn.jsdelivr.net/npm/rbush-knn@3.0.1/rbush-knn.js
+// https://unpkg.com/rbush@2.0.1/rbush.js
+// https://unpkg.com/rbush@2.0.1/rbush.min.js
+// https://unpkg.com/kdbush@3.0.0/kdbush.min.js
+
+
+// *****************************************************************************
+// KD-trees seem appropriate instead of R-Trees or Quad Trees since it's points
+// https://blog.mapbox.com/a-dive-into-spatial-search-algorithms-ebd0c5e39d2a
+// 
+
+var num = 200;
+
+var canvas = document.getElementById("canvas");
+var width = canvas.width = 150;
+var height = canvas.height = 150;
+var ctx = canvas.getContext("2d");
+
+// the problem of schooling is there are too many 'neighbours' to find 
+// when agent numbers are large. 
+// One potential way about this is to distribute the calculation of neighbours over time. 
+// Do not let the algorithm search all agents every time step to find KNN
+// to edo this am trying https://github.com/mourner/rbush
+
+// GLO added to track what part of grid that a particle is in
+// goal - every time step check which particles are within a 'grid cell' and set 
+// all their directions the same
+// element 1 is the binary yes / no of whether it's been set.
+// element 2,3 define the upper right corner coord of the grid cell
+// elements 4,5 are the direction of movement vector determined from the calculation of the first 
+// particle's movement in this cell, in this timestep
+
+var particle_cell_array = new Array(5);
+var x_div = 10; // number of cells horiz
+var y_div = 10; // number of cells vert
+var x_interv = width / x_div; 
+var y_interv = height / y_div;
+var num_cells = x_interv * y_interv; 
+var coordx = 0.0;
+var coordy = 0.0;
+//var i = 0; // rows in list of grid cells
+
+// unused
+//var hexbin = d3.hexbin();
+
+// import rbush, an r-tree library, as a CommonJS module
+// max particles in each tree node = 9
+var tree = rbush(9);
+//tree.load(data1); // bulk insert
+//var neighbors = knn(tree, 40, 40, 10); // return 10 nearest items around point [40, 40]
+
+// ********************************************
+// OLD CODE FOR CREATING CELLS / BINS USING BASIC TECHNIQUE: TWO ARRAYS FOR X AND Y
+// create grid of 'cells' - GLO
+// empty slot / coord x / coord y / delta x / delta y (last two for motion)
+<!-- for(let x=0; x<x_div;x++){ -->
+	<!-- coordx = x_interv * x; -->
+	<!-- for(let y=0; y<y_div;y++){  -->
+		<!-- coordy = y_interv * y; -->
+		<!-- particle_cell_array[y] = new Array(5);  -->
+		<!-- particle_cell_array[y] = [0,coordx,coordy,0,0]; -->
+		<!-- y++; -->
+	<!-- } -->
+<!-- } -->
+
+// duplicate array to use to store cell and motion of each particle
+//var cell_array_len = cell_array.length;
+//var motion_array_len = motion_array.length;
+//window.alert(motion_array_len);
+
+
+<!-- var bins_x = []; -->
+<!-- //var binCount_x = 1; -->
+
+<!-- //Setup Bins -->
+<!-- for(var i = 0; i < x_div; i++){ -->
+  <!-- bins_x.push([i, i * x_interv, (i + 1) * x_interv, 0, 0]) -->
+  <!-- //binCount_x++; -->
+<!-- } -->
+
+<!-- var bins_y = []; -->
+<!-- //var binCount_y = 0; -->
+<!-- for(var i = 0; i < y_div; i++){ -->
+  <!-- bins_y.push([i, i * y_interv, (i + 1) * y_interv, 0, 0]); -->
+  <!-- //binCount_y++; -->
+<!-- } -->
+
+var cellx = 0; 
+var celly = 0;
+
+// variables for the advection / wind / water current 
+<!-- var horiz_band_min = (height / 8) + (height / 4); -->
+<!-- var horiz_band_max = horiz_band_min + (height / 8); -->
+<!-- var horiz_band_min_cusp = horiz_band_min * 0.9; -->
+<!-- var horiz_band_max_cusp = horiz_band_max * 1.1; -->
+
+var d_y = 0.0; 
+var d_x = 0.0; // for direction of movement 
+
+// initialize particles
+var particles = d3.range(num).map(function(i) {
+  //return [Math.round(width*Math.random()), Math.round(height*Math.random())];
+  return [
+  //Math.round((width/4)*Math.random()+width/4), 
+  Math.round((width)*Math.random()), 
+  //Math.round((height/4)*Math.random()+height/4),
+  Math.round((height)*Math.random()),
+  0,
+  0
+  ];
+}); 
+
+// starts running the main loop
+d3.timer(step);
+
+// for on screen text placement
+<!-- var text_loc_x = width * 0.7; -->
+<!-- var text_loc_y = height * 0.9; -->
+//ctx.font = "12px Arial";
+//ctx.fillText('Time step: ' + text,text_loc_x,text_loc_y );
+
+var ii = 0; // frame counter
+var pp = 0; // particle counter
+var next_x = 0.0;
+var next_y = 0.0;
+var binmin_x = 0.0;
+var binmax_x = 0.0;
+var binmin_y = 0.0;
+var binmax_y = 0.0;
+var dir_x = 0.0;
+var dir_y = 0.0;
+
+var particle_cells = 0.0;
+
+var elapsed_start = 0.0;
+var elapsed_end = 0.0;
+var elapsed = 0.0;
+var elapsed_avg = 0.0; 
+
+function step() {
+
+  elapsed_start = performance.now();
+  
+  // new KDBush(points[, getX, getY, nodeSize, arrayType])
+  // NODE SIZE IS V IMPORTANT FOR SPEED
+  // getx, gety are optional if points are already [x,y] format
+  if(ii>0){
+    var KD_tree = new KDBush(particles, undefined, undefined, (num / 10), Int32Array);
+  };
+  
+  // rectangle set up
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.fillRect(0,0,width,height);
+  
+  // fill with grid points GLO
+  //for (var j = 0; j < motion_array_len; j++) {
+	//drawGridCorner([motion_array[j][1],motion_array[j][2]]);
+  //}
+  
+  // *************** TESTING SECTION *****************
+  //       Highlights certain particles in red
+  if(ii>0){
+    <!-- var neighbours1 = KD_tree.within(particles[4][0],particles[4][1], 5); -->
+	<!-- let dir_x1 = particles[4][2]; -->
+    <!-- let dir_y1 = particles[4][3]; -->
+	
+	<!-- let dir_x_sum = 0;  -->
+	<!-- let dir_y_sum = 0;  -->
+	<!-- let neigh_count = 4;  -->
+	<!-- let nn = 0;  -->
+	
+	<!-- neighbours1.forEach(function(n){ -->
+	  
+	  <!-- dir_x_sum += particles[n][2]; -->
+	  <!-- dir_y_sum += particles[n][3]; -->
+
+  <!-- //window.alert(neighbours.length); -->
+    <!-- }); -->
+	
+	<!-- let avg_dir_x = Math.round(dir_x_sum / neighbours1.length);  -->
+	<!-- let avg_dir_y = Math.round(dir_y_sum / neighbours1.length);  -->
+	
+	<!-- particles[4][2] = avg_dir_x; -->
+    <!-- particles[4][3] = avg_dir_y; -->
+	ctx.fillStyle = "rgba(255,0,0,0.5)";
+	drawTestPoint(particles[4]);
+	
+    <!-- neighbours.forEach(function(n){ -->
+      <!-- ctx.fillStyle = "rgba(255,0,0,0.5)"; -->
+	  <!-- particles[n][2] = avg_dir_x; -->
+	  <!-- particles[n][3] = avg_dir_y; -->
+      <!-- drawTestPoint(particles[n]); -->
+	  
+  //window.alert(neighbours.length);
+    <!-- }); -->
+  };
+  
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  pp = 0; // resetparticle counter
+  
+  particles.forEach(function(p) {
+	
+	//window.alert(particles[pp]);
+	if(ii>0){
+	  <!-- const neighbours = KD_tree.within(p[0], p[1], 2); -->
+	  <!-- let local_dir_sum_x = 0.0;  -->
+	  <!-- let local_dir_sum_y = 0.0;  -->
+	  <!-- let n = 0;  -->
+	  <!-- for (n = 0; n < neighbours.length; n++) { -->
+	    <!-- local_dir_sum_x += particles[n][2]; -->
+        <!-- local_dir_sum_y += particles[n][3]; -->
+		<!-- //if (n > 1) break; -->
+      <!-- }; -->
+	  <!-- let local_dir_avg_x = local_dir_sum_x / n;  -->
+	  <!-- let local_dir_avg_y = local_dir_sum_y / n;  -->
+	  <!-- dir_x = local_dir_avg_x; -->
+	  <!-- dir_y = local_dir_avg_y; -->
+	  
+	  // get neighbours within radius 
+	  var neighbours = KD_tree.within(p[0],p[1], 6);
+	  
+	  let align_x_sum = 0; 
+	  let align_y_sum = 0;
+	  let align_avg_x = 0; 
+	  let align_avg_y = 0; 
+	  let align_comp = 0; // yes / no 
+	  
+	  let pos_x_sum = 0; 
+	  let pos_y_sum = 0;
+	  let pos_close_x_sum = 0; 
+	  let pos_close_y_sum = 0; 
+	  let dir_to_avg_neigh_x = 0; 
+	  let dir_to_avg_neigh_y = 0;
+	  let cohesion_comp = 0; // yes / no
+	  
+	  let too_close = 3; // we are too close! steer away
+	  let too_close_cnt = 0; 
+	  let too_close_avg_dir_x = 0; 
+	  let too_close_avg_dir_y = 0; 
+	  let too_close_comp = 0; // yes / no 
+	  
+	  //let max_neigh = 2; 
+	  let n_cnt = 0; 
+	  let n_closest = 0;
+	  let dmin = 1000000; //arbitrary high
+	  
+	  if(neighbours.length>1){
+		neighbours.forEach(function(n){
+
+			let d = distance([p[0],p[1]],[particles[n][0],particles[n][1]]);
+			  
+			// tracks which particle is nearest neighbour, avg distance, and alignment
+			// note the 'neighbours' include the current particle p so d must be > 0
+			if (d < dmin && d > 0 && typeof d !== 'undefined') {
+				n_closest = n;
+				dmin = d; 
+				<!-- //window.alert(neighbours.length); -->			
+				pos_x_sum += particles[n][0];
+				pos_y_sum += particles[n][1];
+				
+				align_x_sum += particles[n][2];
+				align_y_sum += particles[n][3];
+				
+				n_cnt++;
+			}; 
+						
+			if (d < too_close && d > 0 && typeof d !== 'undefined'){
+			  pos_close_x_sum += particles[n][0];
+			  pos_close_y_sum += particles[n][1];
+			  too_close_cnt++;
+			};
+		 });
+	  };
+	  
+	  // set degree limit per time step
+      const rotationSpeed = (1/180)*Math.PI;
+	  let current_angle_particle = Math.atan2(p[3],p[2]);
+
+	  // get SEPARATION component to next movement direction
+	  if(too_close_cnt > 0){
+	   
+	   let too_close_avg_x = (pos_close_x_sum / too_close_cnt);
+	   let too_close_avg_y = (pos_close_y_sum / too_close_cnt);
+	   let dx_1 = (too_close_avg_x - p[0])*(-1); // reverse sign to steer away
+	   let dy_1 = (too_close_avg_y - p[1])*(-1);
+	   //dir_x = dx_1*(-1);
+	   //dir_y = dy_1*(-1);
+	   
+	   let desired_angle_spacing = Math.atan2(dy_1,dx_1);
+	   const angle_for_spacing = transitionAngle(current_angle_particle, desired_angle_spacing, rotationSpeed);
+	   
+	   too_close_avg_dir_x = Math.cos(angle_for_spacing);
+       too_close_avg_dir_y = Math.sin(angle_for_spacing);
+	   
+	   if (too_close_avg_dir_x > 0 && too_close_avg_dir_y > 0) too_close_comp = 1; 
+	   
+	  };
+	  
+	  // get ALIGNMENT component of next movement direction
+	  if(n_cnt > 0){
+	    
+		// avg align of neighbours
+		align_avg_x = align_x_sum / n_cnt; 
+		align_avg_x = align_y_sum / n_cnt;
+		
+		let dx_2 = align_avg_x - p[0];
+		let dy_2 = align_avg_y - p[1];
+		let desired_align_angle = Math.atan2(dy_2,dx_2);
+	    const angle_for_align = transitionAngle(current_angle_particle, desired_align_angle, rotationSpeed);
+		
+		align_avg_x = Math.cos(angle_for_align);
+		align_avg_y = Math.sin(angle_for_align);	
+		
+		if (align_avg_x > 0 && align_avg_y > 0) align_comp = 1; 
+
+	  };
+	  
+	  // get COHESION component
+	  n_cnt = 0; 	 
+	  if(n_cnt > 0){
+	  
+	    //let avg_dir_x = (dir_x_sum / 2);     
+	    //let avg_dir_y = (dir_y_sum / 2); 
+	    //let avg_pos_x = (particles[n_closest][0]); 
+	    //let avg_pos_y = (particles[n_closest][1]);
+		
+	    let avg_pos_x = (pos_x_sum) / n_cnt; 
+	    let avg_pos_y = (pos_y_sum) / n_cnt; 
+		
+		let dx_1 = avg_pos_x - p[0];
+		let dy_1 = avg_pos_y - p[1];
+		let angle = Math.atan2(dy_1,dx_1); 
+		
+		// inconvenient var names - this is avg dir to nearest neighbour
+	    dir_to_avg_neigh_x = Math.cos(angle);
+        dir_to_avg_neigh_y = Math.sin(angle);
+		 
+	  };
+	  
+	  if(too_close_comp == 1 && align_comp == 1 && cohesion_comp == 0){
+		dir_x = (too_close_avg_dir_x + align_avg_x)/ 2;
+		dir_y = (too_close_avg_dir_y + align_avg_y) / 2;
+	  }else if(too_close_comp == 1 && align_comp == 0 && cohesion_comp == 0){
+	    dir_x = too_close_avg_dir_x;
+		dir_y = too_close_avg_dir_y;
+	  }else if(too_close_comp == 0 && align_comp == 1 && cohesion_comp == 0){
+	    dir_x = align_avg_x;
+		dir_y = align_avg_y;
+	  }else{
+	    dir_x = p[2];
+		dir_y = p[3];	 
+	  };
+	  
+	  	// limit the angle of turn so they aren't so sudden
+		// need to get maximum turn radius
+		// get turn desired
+		// if turn desired greater than max, use max
+		
+		<!-- let dx_3 = dir_x - p[2]; -->
+		<!-- let dy_3 = dir_y - p[3]; -->
+		<!-- let angle3 = Math.atan2(dy_3,dx_3); -->
+		
+		<!-- let desired_turn_x = Math.cos(angle3); -->
+		<!-- let desired_turn_y = Math.sin(angle3);	 -->
+		<!-- let turn_dif_x = desired_turn_x - p[2]; -->
+		<!-- let turn_dif_y = desired_turn_y - p[3]; -->
+
+		<!-- if(turn_dif_x > 0.6){ -->
+		  <!-- dir_x += 0.6; -->
+		<!-- }else if(turn_dif_x < -0.6){ -->
+		  <!-- dir_x += -0.6;  -->
+		<!-- }else{ -->
+		  <!-- dir_x += turn_dif_x; -->
+		<!-- }; -->
+		
+		<!-- if(turn_dif_y > 0.6){ -->
+		  <!-- dir_y += 0.6; -->
+		<!-- }else if(turn_dif_y < -0.6){ -->
+		  <!-- dir_y += -0.6;  -->
+		<!-- }else{ -->
+		  <!-- dir_y += turn_dif_y; -->
+		<!-- }; -->
+	  
+	}else{
+	  dir_x = 2*Math.random()-1; // adjusted because otherwise mean is -0.2 (fix this lateR)
+	  dir_y = 2*Math.random()-1;
+	};
+	
+	// ************* OLD CODE FOR QUICK BINS
+    // what cell is particle in and update the cell's average direction (or try to)?
+    <!-- for (var j = 0; j < x_div; j++) { -->
+	  <!-- binmin_x = bins_x[j][1]; -->
+	  <!-- binmax_x = bins_x[j][2]; -->
+	  <!-- if (p[0] > binmin_x && p[0] < binmax_x) { -->
+	    <!-- cellx = j;  -->
+		<!-- // direction for this cell set?  -->
+		<!-- if (bins_x[j][4]==0){ -->
+		  <!-- dir_x = p[2]; -->
+          <!-- bins_x.splice(cellx,1); -->
+          <!-- bins_x.push([cellx,binmin_x,binmax_x,dir_x,1]); -->
+		  <!-- break; -->
+		<!-- }else{ -->
+		  <!-- dir_x = Math.round((bins_x[cellx][3]+p[2])/2); -->
+          <!-- bins_x.splice(cellx,1); -->
+          <!-- bins_x.push([cellx,binmin_x,binmax_x,dir_x,1]); -->
+		  <!-- break; -->
+		<!-- } -->
+	  <!-- } -->
+    <!-- } -->
+	
+	<!-- for (var j = 0; j < y_div; j++) { -->
+	  <!-- binmin_y = bins_y[j][1]; -->
+	  <!-- binmax_y = bins_y[j][2]; -->
+	  <!-- if (p[1] > binmin_y && p[1] < binmax_y){ -->
+	    <!-- celly = j;  -->
+		<!-- // initialize the direction of cell if needed -->
+		<!-- if (bins_y[j][4]==0){ -->
+		  <!-- dir_y = p[3]; -->
+		  <!-- bins_y.splice(celly,1); -->
+		  <!-- bins_y.push([celly,binmin_y,binmax_y,dir_y,1]); -->
+		  <!-- break; -->
+		<!-- }else{ -->
+		  <!-- //bins_y[j][3] = Math.round((bins_y[j][3] + p[1])/2); // take avg -->
+		  <!-- dir_y = Math.round((bins_y[celly][3]+p[3])/2); -->
+		  <!-- bins_y.splice(celly,1); -->
+		  <!-- bins_y.push([celly,binmin_y,binmax_y,dir_y,1]); -->
+		  <!-- break; -->
+		<!-- } -->
+	  <!-- } -->
+    <!-- } -->
+	// **************************
+	
+	
+    // has direction been calculated for this cell yet?
+    // if not, calculate a random direction
+    //         set this as the direction for cell this time step
+    // use direction for this cell 
+	
+    // wind shear after 300k cycles
+    /*if ((ii>500000)){
+	  if(p[1] < horiz_band_max && p[1] > horiz_band_min){
+	    p[0] += 0.5;
+	    p[1] += bins_y[celly][3];
+	  }else if(p[1] < horiz_band_max_cusp && p[1] > horiz_band_min_cusp){
+	    p[0] += 0.2;
+	    p[1] += bins_y[celly][3];
+	  }else{
+	    p[0] += bins_x[cellx][3];
+	    p[1] += bins_y[celly][3];
+  	  }
+    }else{
+      p[0] += bins_x[cellx][3];
+   	  p[1] += bins_y[celly][3];
+    }
+	*/
+	
+	
+    if (dir_x == 0 && dir_y == 0){
+	  //dir_x = p[2];
+	  dir_x = (2*Math.random()-1);
+	  //dir_y = p[3];
+	  dir_y = (2*Math.random()-1);
+	};
+	 
+	 
+	let step_x = Math.cos(dir_x) * 1.4; 
+    let step_y = Math.sin(dir_y) * 1.4; 	
+
+    p[0] += Math.round(step_x); // must round since these are just pixels
+    p[1] += Math.round(step_y);
+	p[2] = Math.round(dir_x * 100) / 100; // do not round too much to store incremental changes
+	p[3] = Math.round(dir_y * 100) / 100;
+    if (p[0] < 0) p[0] = width;  // particle leave one side, enter the other
+    if (p[0] > width) p[0] = 0;
+    if (p[1] < 0) p[1] = height;
+    if (p[1] > height) p[1] = 0;
+	
+	
+	//window.alert(neighbours
+	<!-- var test_p = 0; -->
+    <!-- if (ii>1){ -->
+      <!-- neighbours.forEach(function(n){ -->
+	    <!-- if (pp == n){test_p = 1}; -->
+	  <!-- }); -->
+	<!-- }; -->
+	
+	<!-- if (test_p == 1){ -->
+	   <!-- ctx.fillStyle = "rgba(255,0,0,0.5)"; -->
+	   <!-- drawTestPoint(p); -->
+	<!-- }else{ -->
+	   <!-- ctx.fillStyle = "rgba(255,255,255,0.5)"; -->
+	   <!-- drawPoint(p); -->
+	<!-- }; -->
+	
+    drawPoint(p);
+	//drawText(Math.round(ii/10000));
+	
+    pp++;
+  
+  });
+  
+  ii++;
+  
+  
+  
+
+  // reset the directions of all cells
+  /*for (var j = 0; j < x_div; j++) {
+    bins_x[j][3]=0;
+  }
+  for (var j = 0; j < y_div; j++) {
+    bins_y[j][3]=0;
+  }
+  */
+  elapsed_end = performance.now();
+  elapsed = elapsed_end - elapsed_start;
+  if(elapsed_avg == 0){
+    elapsed_avg = elapsed;
+  }else{
+    elapsed_avg = (elapsed_avg * (ii-1) / ii) + (elapsed / ii);
+  }
+  printTime(elapsed_avg);
+};
+
+function drawPoint(p) {
+  ctx.fillRect(p[0],p[1],1,1);
+};
+
+function drawTestPoint(p) {
+  ctx.fillRect(p[0],p[1],3,3);
+};
+
+// added by GLO
+function drawGridCorner(g) {
+  ctx.fillStyle ="#FF0000";
+  ctx.fillRect(g[0],g[1],2,2);
+};
+
+function drawText(text) {
+  ctx.font = "12px Arial";
+  ctx.fillText(String(text),text_loc_x,text_loc_y );
+};
+
+function printTime(elapsed){
+       d3.select("#timer_out").text(Math.round(elapsed) + "ms")
+};
+
+function distance(a, b) {
+    const dx = a[0] - b[0];
+    const dy = a[1] - b[1];
+    return Math.sqrt(dx * dx + dy * dy);
+};
+
+
+function transitionAngle(fromAngle, toAngle, speed) {
+    // normalize the angles to 0-360 range
+    const rad360 = 2*Math.PI;
+    fromAngle = fromAngle % rad360;
+    toAngle = toAngle % rad360;
+
+    if (fromAngle < toAngle) {
+        if (Math.abs(fromAngle - toAngle) < Math.PI)
+            fromAngle += speed;
+        else fromAngle -= speed;
+    }
+
+    else {
+        if (Math.abs(fromAngle - toAngle) < Math.PI)
+            fromAngle -= speed;
+        else fromAngle += speed;
+    }
+    return fromAngle;
+};
+
+</script>
+<style>
+html, body { margin: 0; padding: 0; }
+
+</style>
+<div id="timer_out"></div></body>
+<div id="debug_console"></div></body>
+</html>

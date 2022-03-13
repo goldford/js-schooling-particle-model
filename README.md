@@ -30,7 +30,12 @@
  Reynolds, C. W. (1987) Flocks, Herds, and Schools: A Distributed Behavioral Model, in Computer Graphics, 21(4) (SIGGRAPH '87 Conference Proceedings) pages 25-34.
  https://www.red3d.com/cwr/papers/1987/boids.html
  
- 
+ ## To-Do
+ - / 1 - pause button (done 2022-03-12)
+   / 2 - panel for graph and plot library
+   / 3 - predator 
+   / 4 - get it working on github.io
+   / 5 - why progressively slower with cohesion on? memory leak or calculator error
  
  http://bl.ocks.org/syntagmatic/5107530
  
